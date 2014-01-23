@@ -1,0 +1,35 @@
+SET QUOTED_IDENTIFIER OFF
+---------------
+IF OBJECT_ID('DBO.FN_LOT_MOVEMENT_OP') IS NULL EXEC ('CREATE FUNCTION DBO.FN_LOT_MOVEMENT_OP(@ID_LOT_MOVEMENT BIGINT) RETURNS VARCHAR AS BEGIN RETURN NULL END')
+GO
+ALTER FUNCTION DBO.FN_LOT_MOVEMENT_OP(
+    @ID_LOT_MOVEMENT BIGINT)
+RETURNS VARCHAR(45)
+AS
+BEGIN
+    declare @op varchar(45)
+    select @op = 
+          CASE
+              WHEN QUANTITY_ADD>0 AND QUANTITY_SUB=0 AND QUANTITY_RES=0 AND CODE_OP NOT IN ('PC_REBIND')
+              THEN 'ADD'     -- Приход
+              WHEN QUANTITY_ADD>0 AND QUANTITY_SUB=0 AND QUANTITY_RES=0 AND CODE_OP IN ('PC_REBIND')
+              THEN 'REBIND_ADD'++CONVERT(VARCHAR(36), ID_LOT_GLOBAL)   -- Приход по распределению
+              WHEN QUANTITY_ADD=0 AND QUANTITY_SUB>0 AND QUANTITY_RES=0 AND CODE_OP NOT IN ('PROD')
+              THEN 'SUB'     -- Расход
+              WHEN QUANTITY_ADD=0 AND QUANTITY_SUB>0 AND QUANTITY_RES=0 AND CODE_OP IN ('PROD')
+              THEN 'PROD-SUB-'+CONVERT(VARCHAR(36), ID_LOT_GLOBAL)     -- Расход по производству
+              WHEN QUANTITY_ADD=0 AND QUANTITY_SUB=0 AND QUANTITY_RES>0
+              THEN 'RES'     -- Резерв
+              WHEN QUANTITY_ADD=0 AND QUANTITY_SUB=0 AND QUANTITY_RES<0
+              THEN 'SUB_RES' -- Снятие с резерва
+              WHEN QUANTITY_ADD=0 AND QUANTITY_SUB<0 AND QUANTITY_RES=0
+              THEN 'RETURN'  -- Возврат
+              WHEN CODE_OP = 'INVENTORY_SVED' AND (QUANTITY_ADD - QUANTITY_SUB) > 0 
+              then 'ADD'   --инвентаризация излишек
+              WHEN CODE_OP = 'INVENTORY_SVED' AND (QUANTITY_ADD - QUANTITY_SUB) < 0 
+              then 'SUB'   --инвентаризация недостача
+              ELSE NULL      -- Непонятно
+          END
+    FROM LOT_MOVEMENT WHERE ID_LOT_MOVEMENT = @ID_LOT_MOVEMENT
+RETURN @op
+END
